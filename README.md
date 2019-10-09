@@ -5,7 +5,7 @@ Bring it up and search for things in a database created by the user.
 
 TODO:
  - UI
- - define "database" files, etc.
+ - single file (fortune format?) loaded in memory
 
  
 ## UI
