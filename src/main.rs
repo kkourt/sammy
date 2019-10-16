@@ -22,6 +22,11 @@ enum Mode {
     ShowResult,
 }
 
+#[derive(Clone,Debug)]
+struct ViewNotes {
+    first: usize,
+    selected: usize,
+}
 
 #[derive(Clone,Debug)]
 struct Note {
@@ -29,13 +34,13 @@ struct Note {
     txt: String,
 }
 
-
 #[derive(Debug)]
 struct State {
     cmd: String, // user command (as they type it)
     msg: String, // message
     notes: Vec<Note>, // all notes
     matched_notes: Vec<usize>, // indexes of matched notes in the notes vector
+    view_notes: Option<ViewNotes>,
     mode: Mode,
 }
 
@@ -85,37 +90,80 @@ impl State {
 
     pub fn new<P: AsRef<std::path::Path>>(fname: P) -> std::io::Result<State> {
         let notes = parse_notes(fname)?;
+        let notes_nr = notes.len();
+        let view_notes = if notes_nr > 0 { Some(ViewNotes { first: 0, selected: 0 } ) } else { None };
         Ok(State {
             cmd: String::from(""),
-            msg: String::from("Type keywords and hit return to see results. <Esc> quits."),
+            msg: String::from("Type keywords, and use arrows to select. <Esc> quits."),
             notes: notes,
-            matched_notes: vec![],
+            matched_notes: (0..notes_nr).collect(),
+            view_notes: view_notes,
             mode: Mode::Command,
         })
     }
 
+    fn reset_view_notes(&mut self) {
+        match self.mode {
+            Mode::Command => if self.matched_notes.len() > 0 {
+                self.view_notes = Some(ViewNotes { first: 0, selected: 0 } );
+            },
+            Mode::ShowResult => (),
+        }
+
+    }
+
     fn filter_notes(&mut self) {
-        let kws: Vec<String> = self.cmd.split_whitespace().map(|s| String::from(s)).collect();
+
+        let kws: Vec<String> = self.cmd.split_whitespace().map(|s| s.to_lowercase()).collect();
             self.matched_notes = self.notes.iter().enumerate().filter_map(
             |(note_id, note)| {
+                let hdr_lc = note.hdr.to_lowercase();
+                let txt_lc = note.txt.to_lowercase();
+                // match for _all_ keywords (AND)
                 for kw in kws.iter() {
-                    if note.hdr.find(kw).is_some() || note.txt.find(kw).is_some() {
-                        return Some(note_id);
+                    if hdr_lc.find(kw).is_none() && txt_lc.find(kw).is_none() {
+                        return None;
                     }
                 }
-                return None;
+                // matched all keywords: return note id
+                return Some(note_id);
             }
         ).collect();
     }
 
-    fn list_results(&mut self) {
-        self.filter_notes();
+    fn prev_result(&mut self) {
+        if let Some(vn) = &mut self.view_notes {
+            assert!(vn.selected >= vn.first);
+            if vn.selected > vn.first {
+                vn.selected -= 1;
+                return;
+            } else if vn.first > 1 {
+                vn.first -= 1;
+                vn.selected -= 1;
+                return;
+            }
+        }
     }
 
-    fn list_prev_result(&mut self) {
-    }
+    fn next_result(&mut self) {
+        // FIXME: this breaks the logic/presentation separation
+        if let Some(vn) = &mut self.view_notes {
+            let (_twidth, theight) = termion::terminal_size().unwrap();
+            assert!(theight > 2); // FIXME
+            let reslines_nr = (theight - 2) as usize;
 
-    fn list_next_result(&mut self) {
+            // we are already on the last note
+            if vn.selected + 1 == self.matched_notes.len() {
+                return
+            }
+
+            vn.selected += 1;
+            if vn.selected - vn.first == reslines_nr {
+                vn.first += 1;
+            }
+
+        }
+
     }
 }
 
@@ -136,10 +184,16 @@ fn render_state<W: std::io::Write>(out: &mut W, st: &State) -> std::io::Result<(
     write!(out, "{}{}[{}]{}", termion::cursor::Goto(1,2), gray_fg, st.msg, color_reset)?;
     match st.mode {
         Mode::Command => {
-            let nlines = std::cmp::min(reslines_nr, st.matched_notes.len() as u16);
-            for i in 0..nlines {
-                let note = &st.notes[st.matched_notes[i as usize]];
-                write!(out, "{}{}", termion::cursor::Goto(1,3 + i), note.hdr)?;
+            let first: usize = st.view_notes.as_ref().map_or(0, |x| x.first);
+            let hl = st.view_notes.as_ref().map(|x| x.selected);
+            let nlines = std::cmp::min(reslines_nr as usize, st.matched_notes.len() - first);
+            for (i,l) in (first..first+nlines).enumerate() {
+                let note = &st.notes[st.matched_notes[l]];
+                if Some(l) == hl {
+                    write!(out, "{}-> {}", termion::cursor::Goto(1,3 + (i as u16)), note.hdr)?;
+                } else {
+                    write!(out, "{}   {}", termion::cursor::Goto(1,3 + (i as u16)), note.hdr)?;
+                }
             }
         },
         Mode::ShowResult => {
@@ -186,6 +240,7 @@ fn main() {
             break;
         }
 
+        let mut cmd_changed = false;
         use termion::event::Key;
         if let Some(uk) = inp.next() {
             match uk {
@@ -201,16 +256,21 @@ fn main() {
                 },
 
                 Ok(Key::Char(c)) => match st.mode {
-                    Mode::Command => st.cmd.push(c),
+                    Mode::Command => {
+                        st.cmd.push(c);
+                        cmd_changed = true
+                    },
                     Mode::ShowResult => unimplemented!(),
                 },
 
                 Ok(Key::Up) => match st.mode {
-                    _ => (),
+                    Mode::Command => st.prev_result(),
+                    Mode::ShowResult => (),
                 },
 
                 Ok(Key::Down) => match st.mode {
-                    _ => (),
+                    Mode::Command => st.next_result(),
+                    Mode::ShowResult => (),
                 },
 
                 // TODO: arbitrary cursor position
@@ -218,12 +278,18 @@ fn main() {
                 // Ok(Key::Right) => match st.mode { }
 
                 Ok(Key::Backspace) => match st.mode {
-                    Mode::Command =>  { st.cmd.pop(); },
+                    Mode::Command =>  {
+                        st.cmd.pop();
+                        cmd_changed = true;
+                    },
                     _ => ()
                 },
 
                 Ok(Key::Ctrl('w')) => match st.mode {
-                    Mode::Command => st.cmd.truncate(0),
+                    Mode::Command => {
+                        st.cmd.truncate(0);
+                        cmd_changed = true;
+                    }
                     _ => (),
                 }
 
@@ -241,6 +307,9 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_millis(100))
         }
 
-        st.list_results();
+        if cmd_changed {
+            st.filter_notes();
+            st.reset_view_notes();
+        }
     }
 }
