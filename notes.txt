@@ -1,0 +1,64 @@
+# format:
+#
+#  - lines starting with '#' are comments
+#  - empty lines are ignored
+#  -  notes are seperated by '%'
+#  - first line of each note is treated as a header
+tmux: pane maninpulation bindings ({break,join}-pane)
+
+Ctrl-a+B: break a pane into a single window (break-pane)
+Ctrl-a+S: send a window to another one as a new pane (join-pane -s)
+Ctrl-a+J: join a window to another one as a new pane (join-pane -j)
+
+%
+
+vim: break long lines into multiple lines
+
+:call Text()
+
+%
+
+X: find keycodes (e.g., special keys)
+
+xev
+
+%
+
+sed: output all lines except the last
+
+sed '1d'
+
+%
+
+vim: unicode characters
+
+- :UnicodeSearch will show unicode characters that match a string
+- You can quote them by Ctrl-V U[hex] (e.g., Ctrl-V+U2713 -> ✓)
+- Some can also be quoted by their keyword with Ctlr-K (e.g., Ctrl-K+OK -> ✓)
+
+%
+
+sed/perl: replace last line
+
+sed -e '$s/.*/moo/'
+perl -np -e 'if(eof()){ s/.*/moo/ }'
+
+%
+
+sed/perl: execute a regexp to a file (and keep backup)
+
+sed -i.orig 's/bar/baz/' file
+perl -pi'.orig' -e 's/bar/baz/' file
+
+%
+
+pthread/glibc implementation
+
+getconf GNU_LIBPTHREAD_VERSION
+getconf GNU_LIBC_VERSION
+
+%
+
+vim: replace something with a newline
+
+:s/foo/(^V)(^M)/
