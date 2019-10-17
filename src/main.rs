@@ -9,17 +9,10 @@ use std::io::{BufRead, Write};
 use termion::raw::IntoRawMode;
 use termion::input::TermRead;
 
-// Updating results as user is typing.
-// TODO:
-//  - first version, where we update results synchronously for every key entered
-//  - <up> and <down> selects across results
-//  - <Enter> shows selected result
-
-
 #[derive(Debug)]
 enum Mode {
     Command,
-    ShowResult,
+    ShowNote,
 }
 
 #[derive(Clone,Debug)]
@@ -83,6 +76,10 @@ fn parse_notes<P: AsRef<std::path::Path>>(fname: P) -> std::io::Result<Vec<Note>
         }
     }
 
+    if note.hdr.len() > 0 {
+        ret.push(note)
+    }
+
     Ok(ret)
 }
 
@@ -94,7 +91,7 @@ impl State {
         let view_notes = if notes_nr > 0 { Some(ViewNotes { first: 0, selected: 0 } ) } else { None };
         Ok(State {
             cmd: String::from(""),
-            msg: String::from("Type keywords, and use arrows to select. <Esc> quits."),
+            msg: String::from("Type keywords, and use arrows to select. <Esc> and q quit."),
             notes: notes,
             matched_notes: (0..notes_nr).collect(),
             view_notes: view_notes,
@@ -102,12 +99,24 @@ impl State {
         })
     }
 
+    fn set_mode(&mut self, m: Mode) {
+        self.mode = m;
+        match self.mode {
+            Mode::Command => {
+                self.msg = String::from("Type keywords, and use arrows to select. <Esc> quits.")
+            },
+            Mode::ShowNote => {
+                self.msg = String::from("Arrows scroll. <Esc> returns to the list.")
+            }
+        }
+    }
+
     fn reset_view_notes(&mut self) {
         match self.mode {
             Mode::Command => if self.matched_notes.len() > 0 {
                 self.view_notes = Some(ViewNotes { first: 0, selected: 0 } );
             },
-            Mode::ShowResult => (),
+            Mode::ShowNote => (),
         }
 
     }
@@ -170,12 +179,12 @@ impl State {
 fn render_state<W: std::io::Write>(out: &mut W, st: &State) -> std::io::Result<()> {
     let (_twidth, theight) = termion::terminal_size()?;
 
-    if theight < 3 {
+    if theight < 4 {
         let errmsg = format!("Terminal height too small: {}", theight);
         let err = std::io::Error::new(std::io::ErrorKind::Other, errmsg);
         return Err(err)
     }
-    let reslines_nr = theight - 2;
+    let reslines_nr = (theight - 2) as usize;
 
     write!(out, "{}", termion::clear::All)?;
     let gray = termion::color::AnsiValue::grayscale(12);
@@ -186,7 +195,7 @@ fn render_state<W: std::io::Write>(out: &mut W, st: &State) -> std::io::Result<(
         Mode::Command => {
             let first: usize = st.view_notes.as_ref().map_or(0, |x| x.first);
             let hl = st.view_notes.as_ref().map(|x| x.selected);
-            let nlines = std::cmp::min(reslines_nr as usize, st.matched_notes.len() - first);
+            let nlines = std::cmp::min(reslines_nr, st.matched_notes.len() - first);
             for (i,l) in (first..first+nlines).enumerate() {
                 let note = &st.notes[st.matched_notes[l]];
                 if Some(l) == hl {
@@ -196,8 +205,29 @@ fn render_state<W: std::io::Write>(out: &mut W, st: &State) -> std::io::Result<(
                 }
             }
         },
-        Mode::ShowResult => {
-            unimplemented!()
+        Mode::ShowNote => {
+            let sel = st.view_notes.as_ref().map(|x| x.selected).unwrap();
+            let note = &st.notes[st.matched_notes[sel]];
+
+            let mut i = 0;
+
+            //let bold = termion::style::Bold;
+            //let nobold = termion::style::NoBold;
+            write!(out, "{}{}", termion::cursor::Goto(1,3 + (i as u16)), note.hdr)?;
+            i += 2;
+
+            let mut start = 0;
+            for line in note.txt.lines() {
+                if start > 0 { // skip lines until we reach the start
+                    start -= 1;
+                    continue;
+                }
+                write!(out, "{} {}", termion::cursor::Goto(1,3 + (i as u16)), line)?;
+                i += 1;
+                if i >= reslines_nr {
+                    break;
+                }
+            }
         }
     }
     write!(out, "{}> {}", termion::cursor::Goto(1,1), st.cmd)?;
@@ -208,14 +238,6 @@ fn render_state<W: std::io::Write>(out: &mut W, st: &State) -> std::io::Result<(
     Ok(())
 }
 
-
-fn load_words() -> std::io::Result<Vec<String>> {
-    let mut f = std::fs::File::open("/usr/share/dict/words")?;
-    let mut bf = std::io::BufReader::new(f);
-
-    let words: Vec<String> = bf.lines().map(|l| l.unwrap() ).collect();
-    Ok(words)
-}
 
 fn main() {
 
@@ -231,6 +253,7 @@ fn main() {
 
     // NB: played around with async, but not going to use it for now
     // let mut inp = termion::async_stdin().keys();
+    // If the notes file become too big to do this synchrously, we can implement async.
     let mut inp = std::io::stdin().keys();
     let mut out = std::io::stdout().into_raw_mode().unwrap();
 
@@ -247,12 +270,14 @@ fn main() {
 
                 Ok(Key::Esc) => match st.mode {
                     Mode::Command => break,
-                    Mode::ShowResult => unimplemented!(),
+                    Mode::ShowNote => st.set_mode(Mode::Command),
                 },
 
                 Ok(Key::Char('\n')) => match st.mode {
-                    Mode::Command => (),
-                    Mode::ShowResult => unimplemented!(),
+                    Mode::Command => {
+                        st.set_mode(Mode::ShowNote);
+                    },
+                    Mode::ShowNote => (),
                 },
 
                 Ok(Key::Char(c)) => match st.mode {
@@ -260,20 +285,20 @@ fn main() {
                         st.cmd.push(c);
                         cmd_changed = true
                     },
-                    Mode::ShowResult => unimplemented!(),
+                    Mode::ShowNote => (),
                 },
 
                 Ok(Key::Up) => match st.mode {
                     Mode::Command => st.prev_result(),
-                    Mode::ShowResult => (),
+                    Mode::ShowNote => (),
                 },
 
                 Ok(Key::Down) => match st.mode {
                     Mode::Command => st.next_result(),
-                    Mode::ShowResult => (),
+                    Mode::ShowNote => (),
                 },
 
-                // TODO: arbitrary cursor position
+                // TODO: support change cursor position
                 // Ok(Key::Left) => match st.mode { }
                 // Ok(Key::Right) => match st.mode { }
 

@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "samthehelper"
+name = "sammy"
 version = "0.1.0"
 dependencies = [
  "termion 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
