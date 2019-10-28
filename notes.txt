@@ -62,3 +62,45 @@ getconf GNU_LIBC_VERSION
 vim: replace something with a newline
 
 :s/foo/(^V)(^M)/
+
+%
+
+tmux: copy and paste
+
+In copy-mode (C-[): <space> starts selection, <enter> copies selection to buffer
+
+After that: :paste-buffer (C-]), or :save-buffer fname.
+            :show-buffer shows buffer contets
+	    :choose-buffer interactive menu to choose buffers
+	    :list-buffers lists buffer
+
+%
+
+tmux: rearrange panes
+
+C-Space: changes layout
+C-{: swap the current pane with the previous pane
+C-}: swap the current pane with the next pane
+
+%
+
+vim: paste into X selection buffer
+
+"* register (e.g., "*yy to copy a line) -> PRIMARY selection (as selecting with mouse)
+"+ register (e.g., "+yy to copy a line) -> CLIPBOARD selection
+
+%
+
+ranger: delete multiple files
+
+- select them with <space> (mark)
+- delete them with d+D
+
+#
+#
+#
+#
+#
+#
+#
+# (Add some lines to avoid reading lines including 'vim:' as modelines)

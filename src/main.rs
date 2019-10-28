@@ -3,6 +3,7 @@
 // <kkourt@kkourt.io>
 
 extern crate termion;
+extern crate dirs;
 
 use std::io::{BufRead, Write};
 
@@ -241,8 +242,10 @@ fn render_state<W: std::io::Write>(out: &mut W, st: &State) -> std::io::Result<(
 
 fn main() {
 
+    let notes_path = dirs::home_dir().expect("Cannot locate user's $HOME").join(".sammy-notes");
+
     let mut st : State = {
-        match State::new("notes.txt") {
+        match State::new(notes_path) {
             Err(err) => {
                 eprintln!("Error initializing: {}", err);
                 return

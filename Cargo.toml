@@ -1,6 +1,6 @@
 [package]
 name = "sammy"
-version = "0.1.0"
+version = "0.0.1"
 authors = ["Kornilios Kourtis <kornilios@gmail.com>"]
 edition = "2018"
 
@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 termion = "*"
+dirs = "2.0"
