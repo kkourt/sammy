@@ -96,6 +96,27 @@ ranger: delete multiple files
 - select them with <space> (mark)
 - delete them with d+D
 
+%
+
+make: automatic variables
+
+- $@: target
+- $<: first prerequisite
+- $?: all prerequisites newer than the target
+- $^: all prerequisites
+
+more: https://www.gnu.org/software/make/manual/html_node/Automatic-Variables.html
+
+%
+
+tridactil: disable with Shift-Esc
+
+%
+
+vim: clean white spaces
+
+vim-better-whitespace plugin: StripWhitespace
+
 #
 #
 #
